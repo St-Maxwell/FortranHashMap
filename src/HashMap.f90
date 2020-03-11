@@ -12,9 +12,10 @@ module mod_hash_map
     integer(kind=i4), parameter :: LOAD_UP_LIMIT = 70 ! ! maximum load factor
 
     type :: hash_item
-        logical :: is_filled
         character(len=:), allocatable :: key_
         class(*), pointer :: value_
+    contains
+        final :: destruct_hash_item
     end type
 
     type :: hash_map
@@ -55,6 +56,10 @@ module mod_hash_map
         module procedure :: new_hash_item_bool
     end interface
 
+    interface assignment (=)
+        module procedure :: assignment_hash_item
+    end interface
+
 contains
 !===========================================================
 
@@ -65,83 +70,87 @@ contains
         if (allocated(this%items_)) error stop "Attempt to initialize an initialized hash table"
 
         this%count_ = 0
-        this%size_ = 31 ! initial size
-        allocate (this%items_(this%size_))
+        this%size_ = 23 ! initial size
+        allocate(this%items_(this%size_))
         do i = 1, this%size_
             this%items_(i)%value_ => null()
         end do
-        this%items_(:)%is_filled = .false.
 
     end subroutine init_hash_map
 
 !===========================================================
 ! overload for new_hash_item interface
 !===========================================================
-    pure function new_hash_item_i4(key, val) result(item)
+    subroutine new_hash_item_i4(item, key, val)
+        type(hash_item), intent(inout) :: item
         character(len=*), intent(in) :: key
         integer(kind=i4), intent(in) :: val
-        type(hash_item) :: item
 
         item%key_ = key
-        allocate (item%value_, source=val)
-        item%is_filled = .true.
+        allocate(item%value_, source=val)
 
-    end function new_hash_item_i4
+    end subroutine new_hash_item_i4
 
-    pure function new_hash_item_i8(key, val) result(item)
+    subroutine new_hash_item_i8(item, key, val)
+        type(hash_item), intent(inout) :: item
         character(len=*), intent(in) :: key
         integer(kind=i8), intent(in) :: val
-        type(hash_item) :: item
 
         item%key_ = key
-        allocate (item%value_, source=val)
-        item%is_filled = .true.
+        allocate(item%value_, source=val)
 
-    end function new_hash_item_i8
+    end subroutine new_hash_item_i8
 
-    pure function new_hash_item_r4(key, val) result(item)
+    subroutine new_hash_item_r4(item, key, val)
+        type(hash_item), intent(inout) :: item
         character(len=*), intent(in) :: key
         real(kind=r4), intent(in) :: val
-        type(hash_item) :: item
 
         item%key_ = key
-        allocate (item%value_, source=val)
-        item%is_filled = .true.
+        allocate(item%value_, source=val)
 
-    end function new_hash_item_r4
+    end subroutine new_hash_item_r4
 
-    pure function new_hash_item_r8(key, val) result(item)
+    subroutine new_hash_item_r8(item, key, val)
+        type(hash_item), intent(inout) :: item
         character(len=*), intent(in) :: key
         real(kind=r8), intent(in) :: val
-        type(hash_item) :: item
 
         item%key_ = key
-        allocate (item%value_, source=val)
-        item%is_filled = .true.
+        allocate(item%value_, source=val)
 
-    end function new_hash_item_r8
+    end subroutine new_hash_item_r8
 
-    pure function new_hash_item_chars(key, val) result(item)
+    subroutine new_hash_item_chars(item, key, val)
+        type(hash_item), intent(inout) :: item
         character(len=*), intent(in) :: key
         character(len=*), intent(in) :: val
-        type(hash_item) :: item
 
         item%key_ = key
-        allocate (item%value_, source=val)
-        item%is_filled = .true.
+        allocate(item%value_, source=val)
 
-    end function new_hash_item_chars
+    end subroutine new_hash_item_chars
 
-    pure function new_hash_item_bool(key, val) result(item)
+    subroutine new_hash_item_bool(item, key, val)
+        type(hash_item), intent(inout) :: item
         character(len=*), intent(in) :: key
         logical, intent(in) :: val
-        type(hash_item) :: item
 
         item%key_ = key
-        allocate (item%value_, source=val)
-        item%is_filled = .true.
+        allocate(item%value_, source=val)
 
-    end function new_hash_item_bool
+    end subroutine new_hash_item_bool
+
+!===========================================================
+
+    subroutine assignment_hash_item(left, right)
+        type(hash_item), intent(out) :: left
+        type(hash_item), intent(in) :: right
+
+        allocate(left%value_, source=right%value_)
+        left%key_ = right%key_
+
+    end subroutine assignment_hash_item
 
 !===========================================================
 
@@ -201,14 +210,14 @@ contains
         integer(kind=i4) :: i
 
         ! lood > maximum load factor, extend the size of hash table
-        load = this%count_*100/this%size_
+        load = this%count_ * 100 / this%size_
         if (load > LOAD_UP_LIMIT) call resize_hash_table(this, .true.)
 
         idx = hash(new_item%key_, this%size_, 0)
 
         i = 1
         do
-            if (.not. this%items_(idx)%is_filled) then
+            if (.not. associated(this%items_(idx)%value_)) then
                 ! the item is empty, save key-value here
                 this%items_(idx) = new_item
                 this%count_ = this%count_ + 1
@@ -218,8 +227,8 @@ contains
             if (this%items_(idx)%key_ == new_item%key_) then
                 ! an item with the same key is already exist
                 ! replace it
-                deallocate (this%items_(idx)%value_)
-                allocate (this%items_(idx)%value_, source=new_item%value_)
+                deallocate(this%items_(idx)%value_)
+                allocate(this%items_(idx)%value_, source=new_item%value_)
                 return
             end if
 
@@ -243,7 +252,7 @@ contains
         if (.not. allocated(this%items_)) error stop "Hash table not initialized"
         if (.not. key_is_valid(key)) error stop "Invalid key: '" // key // "'"
 
-        new_item = new_hash_item(key, val)
+        call new_hash_item(new_item, key, val)
         call add_item_(this, new_item)
 
     end subroutine add_item_i4
@@ -258,7 +267,7 @@ contains
         if (.not. allocated(this%items_)) error stop "Hash table not initialized"
         if (.not. key_is_valid(key)) error stop "Invalid key: '" // key // "'"
 
-        new_item = new_hash_item(key, val)
+        call new_hash_item(new_item, key, val)
         call add_item_(this, new_item)
 
     end subroutine add_item_i8
@@ -273,7 +282,7 @@ contains
         if (.not. allocated(this%items_)) error stop "Hash table not initialized"
         if (.not. key_is_valid(key)) error stop "Invalid key: '" // key // "'"
 
-        new_item = new_hash_item(key, val)
+        call new_hash_item(new_item, key, val)
         call add_item_(this, new_item)
 
     end subroutine add_item_r4
@@ -288,7 +297,7 @@ contains
         if (.not. allocated(this%items_)) error stop "Hash table not initialized"
         if (.not. key_is_valid(key)) error stop "Invalid key: '" // key // "'"
 
-        new_item = new_hash_item(key, val)
+        call new_hash_item(new_item, key, val)
         call add_item_(this, new_item)
 
     end subroutine add_item_r8
@@ -303,9 +312,9 @@ contains
         if (.not. allocated(this%items_)) error stop "Hash table not initialized"
         if (.not. key_is_valid(key)) error stop "Invalid key: '" // key // "'"
 
-        new_item = new_hash_item(key, val)
+        call new_hash_item(new_item, key, val)
         call add_item_(this, new_item)
-
+        
     end subroutine add_item_chars
 
     subroutine add_item_bool(this, key, val)
@@ -318,7 +327,7 @@ contains
         if (.not. allocated(this%items_)) error stop "Hash table not initialized"
         if (.not. key_is_valid(key)) error stop "Invalid key: '" // key // "'"
 
-        new_item = new_hash_item(key, val)
+        call new_hash_item(new_item, key, val)
         call add_item_(this, new_item)
 
     end subroutine add_item_bool
@@ -343,23 +352,23 @@ contains
 
         i = 1
         do
-            if (.not. this%items_(idx)%is_filled) then
+            if (.not. associated(this%items_(idx)%value_)) then
                 if (present(default)) then
                     ! key not found, use default value
                     val = default
                     return
                 end if
 
-                error stop "Key not found: '"//key//"'"
+                error stop "Key not found: '" // key // "'"
             end if
 
             if (this%items_(idx)%key_ == key) then
-                select type (v=>this%items_(idx)%value_)
+                select type (v => this%items_(idx)%value_)
                 type is (integer(kind=i4))
                     val = v
                     return
                 class default
-                    error stop "Type mismatch: '"//key//"'"
+                    error stop "Type mismatch: '" // key // "'"
                 end select
             end if
 
@@ -384,23 +393,23 @@ contains
 
         i = 1
         do
-            if (.not. this%items_(idx)%is_filled) then
+            if (.not. associated(this%items_(idx)%value_)) then
                 if (present(default)) then
                     ! key not found, use default value
                     val = default
                     return
                 end if
 
-                error stop "Key not found: '"//key//"'"
+                error stop "Key not found: '" // key // "'"
             end if
 
             if (this%items_(idx)%key_ == key) then
-                select type (v=>this%items_(idx)%value_)
+                select type (v => this%items_(idx)%value_)
                 type is (integer(kind=i8))
                     val = v
                     return
                 class default
-                    error stop "Type mismatch: '"//key//"'"
+                    error stop "Type mismatch: '" // key // "'"
                 end select
             end if
 
@@ -425,23 +434,23 @@ contains
 
         i = 1
         do
-            if (.not. this%items_(idx)%is_filled) then
+            if (.not. associated(this%items_(idx)%value_)) then
                 if (present(default)) then
                     ! key not found, use default value
                     val = default
                     return
                 end if
 
-                error stop "Key not found: '"//key//"'"
+                error stop "Key not found: '" // key // "'"
             end if
 
             if (this%items_(idx)%key_ == key) then
-                select type (v=>this%items_(idx)%value_)
+                select type (v => this%items_(idx)%value_)
                 type is (real(kind=r4))
                     val = v
                     return
                 class default
-                    error stop "Type mismatch: '"//key//"'"
+                    error stop "Type mismatch: '" // key // "'"
                 end select
             end if
 
@@ -466,23 +475,23 @@ contains
 
         i = 1
         do
-            if (.not. this%items_(idx)%is_filled) then
+            if (.not. associated(this%items_(idx)%value_)) then
                 if (present(default)) then
                     ! key not found, use default value
                     val = default
                     return
                 end if
 
-                error stop "Key not found: '"//key//"'"
+                error stop "Key not found: '" // key // "'"
             end if
 
             if (this%items_(idx)%key_ == key) then
-                select type (v=>this%items_(idx)%value_)
+                select type (v => this%items_(idx)%value_)
                 type is (real(kind=r8))
                     val = v
                     return
                 class default
-                    error stop "Type mismatch: '"//key//"'"
+                    error stop "Type mismatch: '" // key // "'"
                 end select
             end if
 
@@ -507,23 +516,23 @@ contains
 
         i = 1
         do
-            if (.not. this%items_(idx)%is_filled) then
+            if (.not. associated(this%items_(idx)%value_)) then
                 if (present(default)) then
                     ! key not found, use default value
                     val = default
                     return
                 end if
 
-                error stop "Key not found: '"//key//"'"
+                error stop "Key not found: '" // key // "'"
             end if
 
             if (this%items_(idx)%key_ == key) then
-                select type (v=>this%items_(idx)%value_)
+                select type (v => this%items_(idx)%value_)
                 type is (character(len=*))
                     val = v
                     return
                 class default
-                    error stop "Type mismatch: '"//key//"'"
+                    error stop "Type mismatch: '" // key // "'"
                 end select
             end if
 
@@ -548,23 +557,23 @@ contains
 
         i = 1
         do
-            if (.not. this%items_(idx)%is_filled) then
+            if (.not. associated(this%items_(idx)%value_)) then
                 if (present(default)) then
                     ! key not found, use default value
                     val = default
                     return
                 end if
 
-                error stop "Key not found: '"//key//"'"
+                error stop "Key not found: '" // key // "'"
             end if
 
             if (this%items_(idx)%key_ == key) then
-                select type (v=>this%items_(idx)%value_)
+                select type (v => this%items_(idx)%value_)
                 type is (logical)
                     val = v
                     return
                 class default
-                    error stop "Type mismatch: '"//key//"'"
+                    error stop "Type mismatch: '" // key // "'"
                 end select
             end if
 
@@ -585,7 +594,7 @@ contains
         type(hash_item), dimension(:), allocatable :: old_items
         integer(kind=i4) :: new_size
         character(len=:), allocatable :: key
-        integer(kind=i4) :: i, j, idx
+        integer(kind=i4) :: i, j, idx, ierr
 
         if (increase) then
             new_size = next_prime(this%size_*2)
@@ -596,16 +605,17 @@ contains
         call move_alloc(this%items_, old_items)
 
         this%size_ = new_size
-        allocate (this%items_(new_size))
+        allocate(this%items_(new_size), stat=ierr)
+        if (ierr /= 0) error stop "Allocation failed"
+
         do i = 1, new_size
             this%items_(i)%value_ => null()
         end do
-        this%items_(:)%is_filled = .false.
 
         ! re-hash current items
         do i = 1, size(old_items)
 
-            if (.not. old_items(i)%is_filled) cycle
+            if (.not. associated(old_items(i)%value_)) cycle
 
             ! get key of the i-th item
             key = old_items(i)%key_
@@ -615,19 +625,17 @@ contains
 
             j = 1
             do
-                if (.not. this%items_(idx)%is_filled) exit
+                if (.not. associated(this%items_(idx)%value_)) exit
 
                 idx = hash(key, this%size_, j)
                 j = j + 1
 
             end do
 
-            this%items_(idx)%key_ = old_items(i)%key_
-            allocate (this%items_(idx)%value_, source=old_items(i)%value_)
-            this%items_(idx)%is_filled = .true.
+            this%items_(idx) = old_items(i)
 
             ! clean old_items(i), or memery leak may occur
-            call delete_item(old_items(i))
+            !call delete_item(old_items(i))
 
         end do
 
@@ -643,9 +651,9 @@ contains
         integer(kind=i4) :: i
 
         if (.not. allocated(this%items_)) error stop "Hash table not initialized"
-        if (.not. key_is_valid(key)) error stop "Invalid key: '"// key // "'"
+        if (.not. key_is_valid(key)) error stop "Invalid key: '" // key // "'"
 
-        load = this%count_*100/this%size_
+        load = this%count_ * 100 / this%size_
         if (load < LOAD_DOWN_LIMIT) call resize_hash_table(this, .false.)
 
         idx = hash(key, this%size_, 0)
@@ -653,7 +661,7 @@ contains
         i = 1
         do
             ! the inquired key not exist
-            if (.not. this%items_(idx)%is_filled) error stop "Key not found: '"// key // "'"
+            if (.not. associated(this%items_(idx)%value_)) error stop "Key not found: '" // key // "'"
 
             if (this%items_(idx)%key_ == key) then
                 call delete_item(this%items_(idx))
@@ -675,47 +683,47 @@ contains
         type(hash_item), intent(inout) :: item
         integer :: ierr
 
-        if (item%is_filled) then
-            deallocate (item%key_, stat=ierr)
-            deallocate (item%value_, stat=ierr)
-            item%value_ => null()
-            item%is_filled = .false.
-        end if
+        deallocate(item%key_, stat=ierr)
+        deallocate(item%value_, stat=ierr)
+        item%value_ => null()
 
     end subroutine delete_item
 
     subroutine delete_hash_map(this)
         !! manually delete all key-pair item
         class(hash_map), intent(inout) :: this
-        integer(kind=i4) :: i
+        integer :: ierr
 
         if (.not. allocated(this%items_)) error stop "Hash table not initialized"
-        do i = 1, this%size_
-            call delete_item(this%items_(i))
-        end do
-        deallocate (this%items_)
-        this%size_ = 0
+
+        deallocate(this%items_, stat=ierr)
+                this%size_ = 0
         this%count_ = 0
 
     end subroutine delete_hash_map
 
 !===========================================================
 
-    subroutine destruct_hash_map(this)
+    impure elemental subroutine destruct_hash_map(this)
         !! destructor of hash_table
         type(hash_map), intent(inout) :: this
-        integer(kind=i4) :: i
 
-        if (allocated(this%items_)) then
-            do i = 1, this%size_
-                call delete_item(this%items_(i))
-            end do
-            deallocate (this%items_)
-            this%size_ = 0
-            this%count_ = 0
-        end if
-
+        if (allocated(this%items_)) deallocate(this%items_)
+        this%size_ = 0
+        this%count_ = 0
+        
     end subroutine destruct_hash_map
+
+    impure elemental subroutine destruct_hash_item(this)
+        !! destructor of hash_item
+        type(hash_item), intent(inout) :: this
+
+        if (associated(this%value_)) then
+            deallocate(this%key_)
+            deallocate(this%value_)
+        end if
+        
+    end subroutine destruct_hash_item
 
 !===========================================================
 

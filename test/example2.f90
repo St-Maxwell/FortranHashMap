@@ -5,7 +5,7 @@ program main
                                r4 => real32, r8 => real64
     implicit none
     type(hash_map) :: dict
-    character(len=3), dimension(5000) :: keys
+    character(len=3), dimension(10000) :: keys
     character(len=1) :: char1, char2, char3
     integer(kind=i4) :: i, j, k, l
     integer(kind=i8) :: rate, tic, toc
@@ -19,8 +19,8 @@ program main
             do k = 1, 16
                 char3 = achar(64+k)
                 l = l + 1
+                if (l > 10000) exit
                 keys(l) = char1 // char2 // char3
-                if (l == 5000) exit
             end do
         end do
     end do
@@ -29,7 +29,7 @@ program main
 
     
     call system_clock(tic)
-    do i = 1, 5000
+    do i = 1, 10000
         call dict%add(keys(i), i)
     end do
     call system_clock(count=toc, count_rate=rate)
@@ -38,7 +38,7 @@ program main
 
 
     call system_clock(tic)
-    do i = 1, 5000
+    do i = 1, 10000
         call dict%get(keys(i), j)
     end do
     call system_clock(count=toc, count_rate=rate)
